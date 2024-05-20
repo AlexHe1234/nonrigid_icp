@@ -30,9 +30,9 @@ def choleskySolve(M, b):
 Debug=False
 normalWeighting=False
 gamma = 1
-alphas = np.linspace(200,1,10)
+alphas = np.linspace(200,1,20)
 
-def nonrigidIcp(sourcemesh,target_vertices, knn):
+def nonrigidIcp(sourcemesh,target_vertices, kn):
     
     refined_sourcemesh = copy.deepcopy(sourcemesh)  # o3d pcd
     #obtain vertices
@@ -49,17 +49,18 @@ def nonrigidIcp(sourcemesh,target_vertices, knn):
     knnsearch = NearestNeighbors(n_neighbors=1, algorithm='kd_tree').fit(target_vertices)
     
     dist, index = knn(torch.from_numpy(source_vertices[None]).cuda(), 
-                      torch.from_numpy(source_vertices[None]).cuda(), knn)  # index B, N, K
+                      torch.from_numpy(source_vertices[None]).cuda(), kn)  # index B, N, K
     index = index[0]  # N, K
     index0 = torch.arange(index.shape[0])[None].repeat(index.shape[1], 1).T  # N, K
 	
-    e1Idx = index0
-    e2Idx = index
+    e1Idx = index0.cpu().numpy().flatten()
+    e2Idx = index.cpu().numpy().flatten()
     
     #calculating edge info
+    # breakpoint()
     alledges=[]
     for i in range(e1Idx.shape[0]):
-        alledges.append(tuple([e1Idx[i],e2Idx[i]]))
+        alledges.append(tuple([int(e1Idx[i]),int(e2Idx[i])]))
         
     edges = set(alledges)
     n_source_edges = len(edges)
@@ -113,6 +114,7 @@ def nonrigidIcp(sourcemesh,target_vertices, knn):
             
             #rigtnow setting threshold manualy, but if we have and landmark info we could set here
             mismatches = np.where(distances>0.02)[0]
+            print('mismatch', mismatches.sum())
                 
     
             #setting weights of false mathces to zero   
