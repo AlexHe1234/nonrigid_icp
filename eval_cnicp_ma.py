@@ -45,15 +45,16 @@ def get_fake_mesh(tar_pcd):
     return target_mesh
 
 
-def reg(sourcemesh, targetmesh):  # numpy arrays
+def reg(sourcepcd, targetpcd):  # numpy arrays
     initial_guess = np.eye(4)
-    affine_transform = icp(sourcemesh,targetmesh,initial_guess)
+    affine_transform = icp(sourcepcd,targetpcd,initial_guess)
+    
+    sourceply =  o3d.geometry.PointCloud()
+    sourceply.points = o3d.utility.Vector3dVector(sourcepcd)
+    sourceply.transform(affine_transform)
+    sourceply.estimate_normals()
 
-    refined_sourcemesh = copy.deepcopy(sourcemesh)
-    refined_sourcemesh.transform(affine_transform)
-    refined_sourcemesh.compute_vertex_normals()
-
-    deformed_mesh = nonrigidIcp(refined_sourcemesh,targetmesh)
+    deformed_mesh = nonrigidIcp(sourceply,targetpcd)
 
     return deformed_mesh
 

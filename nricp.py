@@ -4,6 +4,20 @@ from sklearn.neighbors import NearestNeighbors
 from sksparse.cholmod import cholesky_AAt
 import open3d as o3d
 import copy
+import torch
+
+from knn_cuda import KNN
+from fpsample import bucket_fps_kdline_sampling
+
+
+def knn(ref: torch.Tensor, qry: torch.Tensor, k: int):
+    # ref B, T, 3
+    # qry B, N, 3
+    assert torch.cuda.is_available(), 'knn requires cuda'
+    knn = KNN(k=k, transpose_mode=True)
+    dist, index = knn(ref, qry)  # both of B, N, 4
+    return dist, index
+
 
 def choleskySolve(M, b):
 
@@ -18,31 +32,34 @@ normalWeighting=False
 gamma = 1
 alphas = np.linspace(200,1,10)
 
-def nonrigidIcp(sourcemesh,targetmesh):
+def nonrigidIcp(sourcemesh,target_vertices, knn):
     
-    refined_sourcemesh = copy.deepcopy(sourcemesh)
+    refined_sourcemesh = copy.deepcopy(sourcemesh)  # o3d pcd
     #obtain vertices
-    target_vertices = np.array(targetmesh.vertices)
-    source_vertices = np.array(refined_sourcemesh.vertices)
+    # target_vertices = np.array(targetmesh
+    source_vertices = np.array(refined_sourcemesh.points)
     #num of source mesh vertices 
     n_source_verts = source_vertices.shape[0]
     
     #normals again for refined source mesh and target mesh
-    source_mesh_normals = np.array(refined_sourcemesh.vertex_normals)
-    target_mesh_normals = np.array(targetmesh.vertex_normals)
+    source_mesh_normals = np.array(refined_sourcemesh.normals)
+    # target_mesh_normals = np.array(targetmesh.vertex_normals)
 
 
     knnsearch = NearestNeighbors(n_neighbors=1, algorithm='kd_tree').fit(target_vertices)
-
-    sourcemesh_faces = np.array(sourcemesh.triangles)
+    
+    dist, index = knn(torch.from_numpy(source_vertices[None]).cuda(), 
+                      torch.from_numpy(source_vertices[None]).cuda(), knn)  # index B, N, K
+    index = index[0]  # N, K
+    index0 = torch.arange(index.shape[0])[None].repeat(index.shape[1], 1).T  # N, K
+	
+    e1Idx = index0
+    e2Idx = index
     
     #calculating edge info
     alledges=[]
-    for face in sourcemesh_faces:
-        face = np.sort(face)
-        alledges.append(tuple([face[0],face[1]]))
-        alledges.append(tuple([face[0],face[2]]))
-        alledges.append(tuple([face[1],face[2]]))
+    for i in range(e1Idx.shape[0]):
+        alledges.append(tuple([e1Idx[i],e2Idx[i]]))
         
     edges = set(alledges)
     n_source_edges = len(edges)
@@ -78,28 +95,6 @@ def nonrigidIcp(sourcemesh,targetmesh):
     X_= np.concatenate((np.eye(3),np.array([[0,0,0]])),axis=0)
     X = np.tile(X_,(n_source_verts,1))
 
-
-    if Debug:
-        targetmesh.paint_uniform_color([0.9,0.1,0.1])
-        refined_sourcemesh.paint_uniform_color([0.1,0.1,0.9])
-        o3d.visualization.draw_geometries([targetmesh,refined_sourcemesh])
-
-    
-    
-    
-    
-    if normalWeighting:
-        n_source_normals = len(source_mesh_normals) #will be equal to n_source_verts
-        DN = sparse.lil_matrix((n_source_normals,n_source_normals*4), dtype=np.float32)
-        j_=0
-        for i in range(n_source_normals):
-            DN[i,j_:j_+3]=source_mesh_normals[i,:]
-            DN[i,j_+3]=1
-            j_+=4
-
-
-
-
     for num_,alpha_stiffness in enumerate(alphas):
         
         print("step- {}/20".format(num_))
@@ -118,18 +113,6 @@ def nonrigidIcp(sourcemesh,targetmesh):
             
             #rigtnow setting threshold manualy, but if we have and landmark info we could set here
             mismatches = np.where(distances>0.02)[0]
-            
-            
-            if normalWeighting:
-                normalsTransformed = DN*X
-                corNormalsTarget = target_mesh_normals[indices]
-                crossNormals = np.cross(corNormalsTarget, normalsTransformed)
-                crossNormalsNorm = np.sqrt(np.sum(crossNormals**2,1))
-                dotNormals = np.sum(corNormalsTarget*normalsTransformed,1)
-                angles =np.arctan(dotNormals/crossNormalsNorm)
-                wVec = wVec *(angles<np.pi/4).reshape(-1,1)
-                
-                
                 
     
             #setting weights of false mathces to zero   
@@ -151,14 +134,14 @@ def nonrigidIcp(sourcemesh,targetmesh):
             
     vertsTransformed = D*X;
 
-    refined_sourcemesh.vertices = o3d.utility.Vector3dVector(vertsTransformed)
+    # refined_sourcemesh.vertices = o3d.utility.Vector3dVector(vertsTransformed)
     
     #project source on to template
     matcheindices = np.where(wVec > 0)[0]
     vertsTransformed[matcheindices]=matches[matcheindices]
-    refined_sourcemesh.vertices = o3d.utility.Vector3dVector(vertsTransformed)
+    # refined_sourcemesh.vertices = o3d.utility.Vector3dVector(vertsTransformed)
 
 
 
 
-    return refined_sourcemesh
+    return vertsTransformed

@@ -14,17 +14,18 @@ def draw_registration_result(source, target, transformation):
 
 def icp(source,target,trans_init=np.eye(4)):
     
-    sourcemesh=copy.deepcopy(source)
-    targetmesh=copy.deepcopy(target)
+    # sourcemesh=copy.deepcopy(source)
+    # targetmesh=copy.deepcopy(target)
     sourceply =  o3d.geometry.PointCloud()
     targetply =  o3d.geometry.PointCloud()
-    sourcemesh.compute_vertex_normals()
-    targetmesh.compute_vertex_normals()
-    sourceply.points = sourcemesh.vertices
-    targetply.points = targetmesh.vertices
-    sourceply.normals = sourcemesh.vertex_normals
-    targetply.normals = targetmesh.vertex_normals
-    
+    # sourcemesh.compute_vertex_normals()
+    # targetmesh.compute_vertex_normals()
+    sourceply.points = o3d.utility.Vector3dVector(source)
+    targetply.points = o3d.utility.Vector3dVector(target)
+    # sourceply.normals = sourcemesh.vertex_normals
+    # targetply.normals = targetmesh.vertex_normals
+    sourceply.estimate_normals()
+    targetply.estimate_normals()
     
     threshold = 0.02
     reg_p2p = o3d.pipelines.registration.registration_icp(
