@@ -27,9 +27,9 @@ def icp(source,target,trans_init=np.eye(4)):
     
     
     threshold = 0.02
-    reg_p2p = o3d.pipelines.registration.registration_icp(
+    reg_p2p = o3d.registration.registration_icp(
             sourceply, targetply, threshold, trans_init,
-            o3d.pipelines.registration.TransformationEstimationPointToPlane())
+            o3d.registration.TransformationEstimationPointToPlane())
     
     return reg_p2p.transformation
 

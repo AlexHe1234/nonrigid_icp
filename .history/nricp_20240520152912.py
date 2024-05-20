@@ -16,7 +16,7 @@ def choleskySolve(M, b):
 Debug=False
 normalWeighting=False
 gamma = 1
-alphas = np.linspace(200,1,10)
+alphas = np.linspace(200,1,20)
 
 def nonrigidIcp(sourcemesh,targetmesh):
     
